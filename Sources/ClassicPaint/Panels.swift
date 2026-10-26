@@ -37,14 +37,14 @@ final class PaintTextView: NSTextView {
 }
 
 /// The floating "Fonts" toolbar shown while typing text.
-final class FontBar: NSPanel, NSWindowDelegate {
+final class FontBar: NSPanel, NSWindowDelegate, NSComboBoxDelegate {
     static let shared = FontBar()
 
-    private let family = NSPopUpButton()
-    private let size = NSComboBox()
-    private let bold = NSButton(title: "B", target: nil, action: nil)
-    private let italic = NSButton(title: "I", target: nil, action: nil)
-    private let underline = NSButton(title: "U", target: nil, action: nil)
+    let family = NSPopUpButton()
+    let size = NSComboBox()
+    let bold = NSButton(title: "B", target: nil, action: nil)
+    let italic = NSButton(title: "I", target: nil, action: nil)
+    let underline = NSButton(title: "U", target: nil, action: nil)
 
     private init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 380, height: 36),
@@ -62,16 +62,17 @@ final class FontBar: NSPanel, NSWindowDelegate {
         size.addItems(withObjectValues: [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72].map(String.init))
         size.numberOfVisibleItems = 12
         size.target = self
-        size.action = #selector(sizeChanged)
+        size.action = #selector(sizeEntered)
+        size.delegate = self
         size.widthAnchor.constraint(equalToConstant: 60).isActive = true
-        for (b, font) in [(bold, NSFont.boldSystemFont(ofSize: 13)),
-                          (italic, NSFontManager.shared.convert(.systemFont(ofSize: 13), toHaveTrait: .italicFontMask)),
-                          (underline, NSFont.systemFont(ofSize: 13))] {
+        for (b, font, action) in [(bold, NSFont.boldSystemFont(ofSize: 13), #selector(boldChanged)),
+                                  (italic, NSFontManager.shared.convert(.systemFont(ofSize: 13), toHaveTrait: .italicFontMask), #selector(italicChanged)),
+                                  (underline, NSFont.systemFont(ofSize: 13), #selector(underlineChanged))] {
             b.setButtonType(.pushOnPushOff)
             b.bezelStyle = .smallSquare
             b.font = font
             b.target = self
-            b.action = #selector(styleChanged)
+            b.action = action
             b.widthAnchor.constraint(equalToConstant: 26).isActive = true
         }
         underline.attributedTitle = NSAttributedString(string: "U", attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue,
@@ -95,8 +96,9 @@ final class FontBar: NSPanel, NSWindowDelegate {
     @objc private func sync() {
         let s = PaintState.shared
         if family.titleOfSelectedItem != s.fontFamily { family.selectItem(withTitle: s.fontFamily) }
-        let sizeText = String(Int(s.fontSize))
-        if size.stringValue != sizeText { size.stringValue = sizeText }
+        // Don't overwrite a size while it is being typed.
+        let sizeText = s.fontSize == s.fontSize.rounded() ? String(Int(s.fontSize)) : String(format: "%g", s.fontSize)
+        if size.currentEditor() == nil, size.stringValue != sizeText { size.stringValue = sizeText }
         bold.state = s.bold ? .on : .off
         italic.state = s.italic ? .on : .off
         underline.state = s.underline ? .on : .off
@@ -106,17 +108,34 @@ final class FontBar: NSPanel, NSWindowDelegate {
         if let t = family.titleOfSelectedItem { PaintState.shared.fontFamily = t }
     }
 
-    @objc private func sizeChanged() {
-        let text = size.indexOfSelectedItem >= 0 ? (size.objectValueOfSelectedItem as? String ?? size.stringValue) : size.stringValue
-        if let v = Double(text), v >= 4, v <= 500 { PaintState.shared.fontSize = CGFloat(v) } else { sync() }
+    /// Applies a typed or picked size; `strict` restores the shown size when it is invalid.
+    private func applySize(_ text: String?, strict: Bool) {
+        let t = (text ?? "").trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+        if let v = Double(t), v >= 4, v <= 500 {
+            if PaintState.shared.fontSize != CGFloat(v) { PaintState.shared.fontSize = CGFloat(v) }
+        } else if strict {
+            sync()
+        }
     }
 
-    @objc private func styleChanged() {
-        let s = PaintState.shared
-        s.bold = bold.state == .on
-        s.italic = italic.state == .on
-        s.underline = underline.state == .on
+    /// Return in the size box.
+    @objc private func sizeEntered() { applySize(size.stringValue, strict: true) }
+
+    /// A size picked from the list (the text field isn't updated yet at this point).
+    func comboBoxSelectionDidChange(_ notification: Notification) {
+        applySize(size.objectValueOfSelectedItem as? String, strict: false)
     }
+
+    /// Typing a size applies it right away, without needing Return.
+    func controlTextDidChange(_ obj: Notification) { applySize(size.stringValue, strict: false) }
+
+    func controlTextDidEndEditing(_ obj: Notification) { applySize(size.stringValue, strict: true) }
+
+    // One action per button: setting one style posts a change that refreshes all buttons,
+    // so reading the others afterwards would see their old state.
+    @objc private func boldChanged() { PaintState.shared.bold = bold.state == .on }
+    @objc private func italicChanged() { PaintState.shared.italic = italic.state == .on }
+    @objc private func underlineChanged() { PaintState.shared.underline = underline.state == .on }
 
     func windowWillClose(_ notification: Notification) {
         PaintState.shared.showTextToolbar = false

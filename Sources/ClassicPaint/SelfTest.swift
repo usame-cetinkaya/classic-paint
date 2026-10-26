@@ -155,6 +155,31 @@ enum SelfTest {
         act { state.primary = .black; state.selectTool(.text); state.fontSize = 20 }
         drag([(200, 300), (420, 340)])
         for (c, code) in [("H", UInt16(4)), ("i", UInt16(34)), ("!", UInt16(18))] { key(c, code) }
+        func describeText(_ label: String) {
+            guard let tv = canvas.subviews.compactMap({ $0 as? PaintTextView }).first, let ts = tv.textStorage, ts.length > 0 else {
+                print("SELFTEST: text \(label): no text box"); return
+            }
+            let f = ts.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+            let traits = NSFontManager.shared.traits(of: f)
+            let u = (ts.attribute(.underlineStyle, at: 0, effectiveRange: nil) as? Int ?? 0) != 0
+            print("SELFTEST: text \(label): \(f.fontName) \(f.pointSize)pt bold=\(traits.contains(.boldFontMask)) italic=\(traits.contains(.italicFontMask)) underline=\(u)")
+        }
+        let bar = FontBar.shared
+        act { describeText("typed") }
+        act { bar.bold.performClick(nil) }
+        act { bar.italic.performClick(nil) }
+        act { bar.underline.performClick(nil) }
+        act { describeText("after B, I, U clicks") }
+        act { bar.italic.performClick(nil) }
+        act { describeText("after I again") }
+        act { bar.size.selectItem(withObjectValue: "36") }
+        act { describeText("after picking 36 from the list") }
+        act {
+            bar.size.stringValue = "28"
+            NotificationCenter.default.post(name: NSControl.textDidChangeNotification, object: bar.size)
+        }
+        act { describeText("after typing 28 (no Return)") }
+        act { bar.italic.performClick(nil) }
         act { state.selectTool(.select) }   // commits the text
         // Select a block and move it (Ctrl+drag would copy)
         drag([(10, 10), (150, 70)])
