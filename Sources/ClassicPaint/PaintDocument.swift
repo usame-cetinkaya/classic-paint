@@ -47,7 +47,9 @@ final class PaintDocument: NSDocument {
 
     override func printOperation(withSettings printSettings: [NSPrintInfo.AttributeKey: Any]) throws -> NSPrintOperation {
         let image = canvas?.flattened() ?? bitmap
-        let view = NSImageView(frame: NSRect(x: 0, y: 0, width: image.width, height: image.height))
+        // Print at 96 dpi (72 points per inch), so 14.68 cm in Attributes prints as 14.68 cm.
+        let points = 72 / Bitmap.dpi
+        let view = NSImageView(frame: NSRect(x: 0, y: 0, width: Double(image.width) * points, height: Double(image.height) * points))
         view.image = NSImage(cgImage: image.image, size: view.frame.size)
         view.imageScaling = .scaleProportionallyDown
         let info = printInfo.copy() as! NSPrintInfo

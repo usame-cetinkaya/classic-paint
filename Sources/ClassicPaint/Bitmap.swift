@@ -115,6 +115,8 @@ func bresenham(_ a: IPoint, _ b: IPoint, _ plot: (Int, Int) -> Void) {
 /// A pixel buffer with a CoreGraphics context drawing into it. The context uses
 /// top-left origin coordinates and never antialiases, like the original Paint.
 final class Bitmap {
+    /// Paint's resolution: Attributes converts inches/cm with it, and files and prints carry it.
+    static let dpi = 96.0
     static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     static let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
 
@@ -388,7 +390,8 @@ final class Bitmap {
         guard let opaque = ctx.makeImage() else { return nil }
         let data = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(data, uti as CFString, 1, nil) else { return nil }
-        var props: [CFString: Any] = [:]
+        // Without this, other apps assume 72 dpi and show or print the picture a third too large.
+        var props: [CFString: Any] = [kCGImagePropertyDPIWidth: Bitmap.dpi, kCGImagePropertyDPIHeight: Bitmap.dpi]
         if uti == UTType.jpeg.identifier { props[kCGImageDestinationLossyCompressionQuality] = 0.92 }
         CGImageDestinationAddImage(dest, opaque, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return nil }

@@ -30,6 +30,12 @@ enum SelfTest {
             print("ATTR 2in x 1,5in -> \(form.result()!)")
             click("Cm"); print("ATTR shown in cm: \(fields()) result=\(form.result()!)")
             form.widthField.stringValue = "abc"; print("ATTR invalid -> \(String(describing: form.result()))")
+            let img = Bitmap(width: 555, height: 266, fill: .white)
+            for uti in ["public.png", "com.microsoft.bmp", "public.jpeg", "public.tiff"] {
+                let props = CGImageSourceCopyPropertiesAtIndex(CGImageSourceCreateWithData(img.encoded(as: uti)! as CFData, nil)!, 0, nil) as! [CFString: Any]
+                let dpi = props[kCGImagePropertyDPIWidth] as? Double ?? 0
+                print("ATTR \(uti) dpi=\(dpi) → \(String(format: "%.2f", 555 / dpi * 2.54)) cm wide")
+            }
             print("ATTR remembered unit=\(UserDefaults.standard.integer(forKey: "AttributesUnit"))")
             let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
             form.widthField.stringValue = "21.17"

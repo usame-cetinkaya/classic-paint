@@ -123,7 +123,7 @@ final class AttributesForm: NSObject {
         var pixelsPerUnit: Double { [AttributesForm.dpi, AttributesForm.dpi / 2.54, 1][rawValue] }
     }
 
-    static let dpi = 96.0
+    static let dpi = Bitmap.dpi
     private static let unitKey = "AttributesUnit"
 
     let widthField = NSTextField()
