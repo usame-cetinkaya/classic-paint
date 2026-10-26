@@ -41,14 +41,9 @@ enum Dialogs {
     }
 
     static func attributes(width: Int, height: Int) -> (Int, Int)? {
-        let w = field("\(width)"), h = field("\(height)")
-        let grid = NSGridView(views: [[label("Width:"), w, label("pixels")], [label("Height:"), h, label("pixels")]])
-        grid.rowSpacing = 8
-        guard run("Attributes", grid, focus: w),
-              let wv = Int(w.stringValue.trimmingCharacters(in: .whitespaces)),
-              let hv = Int(h.stringValue.trimmingCharacters(in: .whitespaces)),
-              (1...20000).contains(wv), (1...20000).contains(hv) else { return nil }
-        return (wv, hv)
+        let form = AttributesForm(width: width, height: height)
+        guard run("Attributes", form.view, focus: form.widthField) else { return nil }
+        return form.result()
     }
 
     static func flipRotate() -> FlipRotate? {
@@ -115,5 +110,91 @@ enum Dialogs {
         case .alertSecondButtonReturn: return false
         default: return nil
         }
+    }
+}
+
+/// Image > Attributes: width and height in inches, centimeters or pixels,
+/// converted at 96 dots per inch like Windows Paint.
+final class AttributesForm: NSObject {
+    enum Unit: Int, CaseIterable {
+        case inches, centimeters, pixels
+
+        var title: String { ["Inches", "Cm", "Pixels"][rawValue] }
+        var pixelsPerUnit: Double { [AttributesForm.dpi, AttributesForm.dpi / 2.54, 1][rawValue] }
+    }
+
+    static let dpi = 96.0
+    private static let unitKey = "AttributesUnit"
+
+    let widthField = NSTextField()
+    let heightField = NSTextField()
+    private(set) var view = NSView()
+    private var unit: Unit
+    private var buttons: [NSButton] = []
+    /// Exact sizes, so switching units back and forth never changes them by rounding.
+    private var pixels: (w: Int, h: Int)
+    private var shown: (w: String, h: String) = ("", "")
+
+    init(width: Int, height: Int) {
+        pixels = (width, height)
+        unit = (UserDefaults.standard.object(forKey: AttributesForm.unitKey) as? Int).flatMap(Unit.init) ?? .pixels
+        super.init()
+        for f in [widthField, heightField] {
+            f.alignment = .right
+            f.widthAnchor.constraint(equalToConstant: 80).isActive = true
+        }
+        buttons = Unit.allCases.map { u in
+            let b = NSButton(radioButtonWithTitle: u.title, target: self, action: #selector(unitChanged(_:)))
+            b.tag = u.rawValue
+            b.state = u == unit ? .on : .off
+            return b
+        }
+        let size = NSGridView(views: [[NSTextField(labelWithString: "Width:"), widthField],
+                                      [NSTextField(labelWithString: "Height:"), heightField]])
+        size.rowSpacing = 8
+        let units = NSStackView(views: [NSTextField(labelWithString: "Units:")] + buttons)
+        let note = NSTextField(labelWithString: "Resolution: \(Int(AttributesForm.dpi)) × \(Int(AttributesForm.dpi)) dots per inch")
+        note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        note.textColor = .secondaryLabelColor
+        let stack = NSStackView(views: [size, units, note])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        view = stack
+        show()
+    }
+
+    private func format(_ px: Int) -> String {
+        unit == .pixels ? String(px) : String(format: "%.2f", Double(px) / unit.pixelsPerUnit)
+    }
+
+    private func show() {
+        shown = (format(pixels.w), format(pixels.h))
+        widthField.stringValue = shown.w
+        heightField.stringValue = shown.h
+    }
+
+    /// The field in pixels; nil when it isn't a valid number.
+    private func parse(_ field: NSTextField, displayed: String, exact: Int) -> Int? {
+        let text = field.stringValue.trimmingCharacters(in: .whitespaces)
+        if text == displayed { return exact }
+        guard let v = Double(text.replacingOccurrences(of: ",", with: ".")), v > 0 else { return nil }
+        return max(1, Int((v * unit.pixelsPerUnit).rounded()))
+    }
+
+    @objc private func unitChanged(_ sender: NSButton) {
+        guard let new = Unit(rawValue: sender.tag), new != unit else { return }
+        if let w = parse(widthField, displayed: shown.w, exact: pixels.w) { pixels.w = w }
+        if let h = parse(heightField, displayed: shown.h, exact: pixels.h) { pixels.h = h }
+        unit = new
+        UserDefaults.standard.set(new.rawValue, forKey: AttributesForm.unitKey)
+        show()
+    }
+
+    func result() -> (Int, Int)? {
+        guard let w = parse(widthField, displayed: shown.w, exact: pixels.w),
+              let h = parse(heightField, displayed: shown.h, exact: pixels.h),
+              (1...20000).contains(w), (1...20000).contains(h) else { return nil }
+        return (w, h)
     }
 }

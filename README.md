@@ -27,7 +27,7 @@ The app is ad-hoc signed (no Developer ID), so the first launch needs right-clic
 - All 16 tools: Free-Form Select, Select, Eraser/Color Eraser, Fill With Color, Pick Color, Magnifier, Pencil, Brush (12 tips), Airbrush, Text, Line, Curve, Rectangle, Polygon, Ellipse, Rounded Rectangle, with the classic options box.
 - Left button draws with the foreground color, right button (or Ctrl-click) with the background color.
 - Selections: move, Ctrl/Option-drag copy, Shift-drag smear, stretch handles, arrow-key nudge, Draw Opaque / transparent mode.
-- Image menu: Flip/Rotate, Stretch/Skew, Invert Colors, Attributes, Clear Image, Crop.
+- Image menu: Flip/Rotate, Stretch/Skew, Invert Colors, Attributes (size in pixels, inches or cm at 96 dpi), Clear Image, Crop.
 - Zoom 12.5%–1600% (pinch too) with the pixel grid, View Bitmap, canvas resize handles.
 - Opens and saves PNG, BMP, JPEG, GIF and TIFF; print; set as desktop background.
 - Unlimited-ish undo (50 steps) and Repeat.

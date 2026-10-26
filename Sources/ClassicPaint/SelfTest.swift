@@ -16,6 +16,36 @@ enum SelfTest {
         guard let wc = NSApp.windows.compactMap({ $0.windowController as? PaintWindowController }).first,
               let window = wc.window else { print("SELFTEST: no window"); exit(2) }
         window.makeKeyAndOrderFront(nil)
+        if let shot = ProcessInfo.processInfo.environment["CLASSIC_PAINT_TEST_ATTRIBUTES"] {
+            UserDefaults.standard.removeObject(forKey: "AttributesUnit")
+            let form = AttributesForm(width: 800, height: 600)
+            let radios = form.view.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSButton }
+            func click(_ title: String) { radios.first { $0.title == title }!.performClick(nil) }
+            func fields() -> String { "\(form.widthField.stringValue) x \(form.heightField.stringValue)" }
+            print("ATTR pixels: \(fields())")
+            click("Inches"); print("ATTR inches: \(fields())")
+            click("Cm"); print("ATTR cm: \(fields())")
+            click("Pixels"); print("ATTR back to pixels: \(fields()) result=\(form.result()!)")
+            click("Inches"); form.widthField.stringValue = "2"; form.heightField.stringValue = "1,5"
+            print("ATTR 2in x 1,5in -> \(form.result()!)")
+            click("Cm"); print("ATTR shown in cm: \(fields()) result=\(form.result()!)")
+            form.widthField.stringValue = "abc"; print("ATTR invalid -> \(String(describing: form.result()))")
+            print("ATTR remembered unit=\(UserDefaults.standard.integer(forKey: "AttributesUnit"))")
+            let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+            form.widthField.stringValue = "21.17"
+            let box = NSView(frame: NSRect(origin: .zero, size: form.view.fittingSize).insetBy(dx: -16, dy: -16))
+            form.view.frame = NSRect(origin: NSPoint(x: 16, y: 16), size: form.view.fittingSize)
+            box.addSubview(form.view)
+            host.appearance = NSAppearance(named: .aqua)
+            box.wantsLayer = true
+            box.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            host.contentView = box
+            box.layoutSubtreeIfNeeded()
+            let rep = box.bitmapImageRepForCachingDisplay(in: box.bounds)!
+            box.cacheDisplay(in: box.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: shot))
+            exit(0)
+        }
         if ProcessInfo.processInfo.environment["CLASSIC_PAINT_DUMP_MENU"] != nil {
             func dump(_ m: NSMenu, _ indent: String) {
                 for i in m.items where !i.isSeparatorItem {
