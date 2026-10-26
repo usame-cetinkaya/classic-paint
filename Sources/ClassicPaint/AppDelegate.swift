@@ -158,6 +158,7 @@ enum MainMenu {
             add(zoom, "Normal Size", #selector(CanvasView.zoomNormal(_:)), key(NSPageUpFunctionKey), [.control])
             add(zoom, "Normal Size", #selector(CanvasView.zoomNormal(_:)), "0", hidden: true)
             add(zoom, "Large Size", #selector(CanvasView.zoomLarge(_:)), key(NSPageDownFunctionKey), [.control])
+            add(zoom, "Actual Size", #selector(CanvasView.zoomActualSize(_:)), "0", [.command, .option])
             add(zoom, "Custom…", #selector(CanvasView.zoomCustom(_:)))
             zoom.addItem(.separator())
             add(zoom, "Zoom In", #selector(CanvasView.zoomIn(_:)), "=")
@@ -165,6 +166,8 @@ enum MainMenu {
             add(zoom, "Zoom Out", #selector(CanvasView.zoomOut(_:)), "-")
             zoom.addItem(.separator())
             add(zoom, "Show Grid", #selector(AppDelegate.toggleGrid(_:)), "g")
+            zoom.addItem(.separator())
+            add(zoom, "Calibrate Screen…", #selector(CanvasView.calibrateScreen(_:)))
             let zoomItem = NSMenuItem(title: "Zoom", action: nil, keyEquivalent: "")
             zoomItem.submenu = zoom
             m.addItem(zoomItem)

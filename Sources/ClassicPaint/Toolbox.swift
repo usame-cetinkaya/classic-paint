@@ -311,7 +311,7 @@ final class StatusBarView: NSView {
         bounds.fill()
         Classic.box(0, 0, bounds.width, 1, Classic.light)
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.black]
-        let widths: [CGFloat] = [110, 110, 120, 60]
+        let widths: [CGFloat] = [110, 110, 120, 80]
         let values = [position, selectionSize, imageSize, zoom]
         var x = bounds.width - widths.reduce(0, +) - 4
         let helpRect = NSRect(x: 2, y: 3, width: x - 6, height: bounds.height - 5)

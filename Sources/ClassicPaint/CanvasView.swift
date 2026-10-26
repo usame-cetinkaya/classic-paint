@@ -1017,7 +1017,8 @@ final class CanvasView: NSView {
         if size.isEmpty, let sel = selection { size = "\(sel.rect.w) × \(sel.rect.h)" }
         sb.selectionSize = size
         sb.imageSize = "\(bitmap.width) × \(bitmap.height)px"
-        sb.zoom = "\(Int((zoom * 100).rounded()))%"
+        let actual = actualSizeZoom.map { abs($0 - zoom) < 0.001 } ?? false
+        sb.zoom = actual ? "Actual size" : "\(Int((zoom * 100).rounded()))%"
     }
 
     @objc private func stateChanged(_ n: Notification) {
@@ -1091,6 +1092,27 @@ final class CanvasView: NSView {
     @objc func zoomIn(_ sender: Any?) { setZoom(CanvasView.zoomSteps.first { $0 > zoom + 0.001 } ?? 16) }
     @objc func zoomOut(_ sender: Any?) { setZoom(CanvasView.zoomSteps.last { $0 < zoom - 0.001 } ?? 0.125) }
     @objc func zoomCustom(_ sender: Any?) { if let z = Dialogs.customZoom(current: zoom) { setZoom(z) } }
+
+    /// The zoom at which 1 cm in Attributes measures 1 cm on this screen.
+    private var actualSizeZoom: CGFloat? {
+        guard let screen = window?.screen ?? NSScreen.main,
+              let ppi = ScreenCalibration.pointsPerInch(for: screen) else { return nil }
+        return ppi / CGFloat(Bitmap.dpi)
+    }
+
+    @objc func zoomActualSize(_ sender: Any?) {
+        if let z = actualSizeZoom {
+            setZoom(z)
+        } else {
+            calibrateScreen(sender)
+        }
+    }
+
+    @objc func calibrateScreen(_ sender: Any?) {
+        guard let screen = window?.screen ?? NSScreen.main,
+              let ppi = ScreenCalibration.runDialog(for: screen) else { return }
+        setZoom(ppi / CGFloat(Bitmap.dpi))
+    }
 
     @objc func viewBitmap(_ sender: Any?) {
         commitText()
@@ -1317,6 +1339,8 @@ extension CanvasView: NSMenuItemValidation {
             item.state = abs(zoom - 1) < 0.001 ? .on : .off
         case #selector(zoomLarge(_:)):
             item.state = abs(zoom - 4) < 0.001 ? .on : .off
+        case #selector(zoomActualSize(_:)):
+            item.state = actualSizeZoom.map { abs($0 - zoom) < 0.001 } ?? false ? .on : .off
         case #selector(zoomIn(_:)):
             return zoom < 16
         case #selector(zoomOut(_:)):

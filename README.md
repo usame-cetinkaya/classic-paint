@@ -29,6 +29,7 @@ The app is ad-hoc signed (no Developer ID), so the first launch needs right-clic
 - Selections: move, Ctrl/Option-drag copy, Shift-drag smear, stretch handles, arrow-key nudge, Draw Opaque / transparent mode.
 - Image menu: Flip/Rotate, Stretch/Skew, Invert Colors, Attributes (size in pixels, inches or cm at 96 dpi), Clear Image, Crop.
 - Zoom 12.5%–1600% (pinch too) with the pixel grid, View Bitmap, canvas resize handles.
+- View > Zoom > Actual Size (⌥⌘0) shows the picture at real-world size after a one-time Calibrate Screen… against a ruler (pictures are 96 dpi).
 - Opens and saves PNG, BMP, JPEG, GIF and TIFF; print; set as desktop background.
 - Unlimited-ish undo (50 steps) and Repeat.
 
@@ -44,6 +45,7 @@ Every ⌘ shortcut also works with Ctrl, as on Windows. Help > Help Topics (⌘?
 | Tool Box / Color Box | ⌘T / ⌘L |
 | Normal / Large size | ⌃PgUp / ⌃PgDn (also ⌘0) |
 | Zoom in / out | ⌘= / ⌘- |
+| Actual size (ruler-accurate) | ⌥⌘0 |
 | Show Grid / View Bitmap | ⌘G / ⌘F |
 | Flip/Rotate · Stretch/Skew | ⌘R · ⌃W |
 | Invert Colors · Attributes | ⌘I · ⌘E |

@@ -16,6 +16,29 @@ enum SelfTest {
         guard let wc = NSApp.windows.compactMap({ $0.windowController as? PaintWindowController }).first,
               let window = wc.window else { print("SELFTEST: no window"); exit(2) }
         window.makeKeyAndOrderFront(nil)
+        if ProcessInfo.processInfo.environment["CLASSIC_PAINT_TEST_ACTUAL"] != nil, let screen = window.screen ?? NSScreen.main {
+            print("ACTUAL reported=\(String(describing: ScreenCalibration.reportedPointsPerInch(for: screen)))")
+            // The user's measurement: a 10 cm box measured 7.5 cm at 100%.
+            ScreenCalibration.set(96 * 10 / 7.5, for: screen)
+            wc.canvas.zoomActualSize(nil)
+            let z = wc.canvas.enclosingScrollView!.magnification
+            let cmOnScreen = 378 * z / ScreenCalibration.pointsPerInch(for: screen)! * 2.54
+            let cal = CalibrationView(pointsPerInch: 128)
+            let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+            host.appearance = NSAppearance(named: .aqua)
+            let box = NSView(frame: NSRect(origin: .zero, size: cal.fittingSize).insetBy(dx: -16, dy: -16))
+            box.wantsLayer = true
+            box.layer?.backgroundColor = NSColor(white: 0.93, alpha: 1).cgColor
+            cal.frame = NSRect(origin: NSPoint(x: 16, y: 16), size: cal.fittingSize)
+            box.addSubview(cal)
+            host.contentView = box
+            box.layoutSubtreeIfNeeded()
+            let rep = box.bitmapImageRepForCachingDisplay(in: box.bounds)!
+            box.cacheDisplay(in: box.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLASSIC_PAINT_TEST_ACTUAL"]!))
+            print("ACTUAL zoom=\(z) → a 378 px (10 cm) box spans \(String(format: "%.2f", cmOnScreen)) cm on screen; status=\(wc.canvas.statusBar?.zoom ?? "")")
+            exit(0)
+        }
         if let shot = ProcessInfo.processInfo.environment["CLASSIC_PAINT_TEST_ATTRIBUTES"] {
             UserDefaults.standard.removeObject(forKey: "AttributesUnit")
             let form = AttributesForm(width: 800, height: 600)
