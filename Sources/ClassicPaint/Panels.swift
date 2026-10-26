@@ -239,7 +239,9 @@ enum HelpWindow {
 
     TEXT
       ⌘B / ⌘I / ⌘U (or Ctrl) toggle bold, italic, underline while typing
+      Drag a handle to resize the text box, drag its border to move it
       Esc or a click outside the box places the text
+      The preview shows exactly the pixels that will be placed
 
     COLORS
       Click a swatch: foreground · Right-click (or Ctrl-click): background

@@ -12,7 +12,7 @@ final class CanvasView: NSView {
 
     private enum Mode {
         case idle, stroke, shape, curve, polygon, pick, selectRect, selectFree, moveSelection, textBox
-        case resizeSelection(Int), resizeCanvas(Int)
+        case resizeSelection(Int), resizeCanvas(Int), resizeText(Int), moveText
     }
 
     private var mode: Mode = .idle
@@ -117,7 +117,18 @@ final class CanvasView: NSView {
     private func press(_ e: NSEvent, button b: Int, right: Bool) {
         // Pressing the other button mid-drag cancels, as in Paint.
         if dragging { cancelCurrent(); return }
-        if textView != nil { commitText(); return }
+        if textView != nil {
+            // Handles resize the text box, its border moves it; any other click places the text.
+            let vp = viewPoint(e)
+            if let h = textHandle(at: vp) {
+                beginTextDrag(.resizeText(h), e)
+            } else if onTextBorder(vp) {
+                beginTextDrag(.moveText, e)
+            } else {
+                commitText()
+            }
+            return
+        }
         window?.makeFirstResponder(self)
 
         let vp = viewPoint(e), p = pixel(vp)
@@ -248,6 +259,10 @@ final class CanvasView: NSView {
             moveSelection(to: p)
         case .resizeSelection(let h):
             resizeSelection(h, to: p)
+        case .resizeText(let h):
+            resizeTextBox(h, to: p)
+        case .moveText:
+            moveTextBox(to: p)
         case .resizeCanvas(let h):
             let w = max(1, Int((vp.x - margin).rounded())), hh = max(1, Int((vp.y - margin).rounded()))
             canvasDrag = (h == 5 ? bitmap.width : w, h == 3 ? bitmap.height : hh)
@@ -294,6 +309,8 @@ final class CanvasView: NSView {
                 resizeCanvas(d.w, d.h)
             }
             updateFrame()
+        case .resizeText, .moveText:
+            if let tv = textView { window?.makeFirstResponder(tv) }
         case .moveSelection, .resizeSelection, .idle:
             break
         }
@@ -760,6 +777,7 @@ final class CanvasView: NSView {
         tv.onEscape = { [weak self] in self?.commitText() }
         tv.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(textFrameChanged(_:)), name: NSView.frameDidChangeNotification, object: tv)
+        NotificationCenter.default.addObserver(self, selector: #selector(textFrameChanged(_:)), name: NSText.didChangeNotification, object: tv)
         addSubview(tv)
         textView = tv
         applyTextStyle()
@@ -770,40 +788,133 @@ final class CanvasView: NSView {
 
     @objc private func textFrameChanged(_ n: Notification) { needsDisplay = true }
 
-    private func applyTextStyle() {
+    private func textHandle(at vp: CGPoint) -> Int? {
+        guard textView != nil else { return nil }
+        let tol = 5 / zoom
+        for (i, c) in handleCenters(viewRect(textBoxRect)).enumerated() where abs(c.x - vp.x) <= tol && abs(c.y - vp.y) <= tol {
+            return i
+        }
+        return nil
+    }
+
+    /// Within a few screen points of the text box's dashed border.
+    private func onTextBorder(_ vp: CGPoint) -> Bool {
+        guard textView != nil else { return false }
+        let r = viewRect(textBoxRect), tol = 3 / zoom
+        return r.insetBy(dx: -tol, dy: -tol).contains(vp) && !r.insetBy(dx: tol, dy: tol).contains(vp)
+    }
+
+    /// Handles and border sit partly over the text view; take those clicks here.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if textView != nil, let sv = superview {
+            let p = convert(point, from: sv)
+            if textHandle(at: p) != nil || onTextBorder(p) { return self }
+        }
+        return super.hitTest(point)
+    }
+
+    private func beginTextDrag(_ m: Mode, _ e: NSEvent) {
+        let p = pixel(viewPoint(e))
+        dragging = true
+        activeRight = e.type == .rightMouseDown
+        startPt = p
+        rawPt = p
+        mode = m
+        moveOrigin = textBoxRect
+    }
+
+    private func setTextBox(_ r: IRect) {
         guard let tv = textView else { return }
-        var attrs: [NSAttributedString.Key: Any] = [.font: state.textFont(), .foregroundColor: state.primary.nsColor]
-        if state.underline { attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue }
-        tv.typingAttributes = attrs
-        if let ts = tv.textStorage { ts.setAttributes(attrs, range: NSRange(location: 0, length: ts.length)) }
-        tv.insertionPointColor = state.primary.nsColor
-        tv.drawsBackground = !state.transparentSelection
-        tv.backgroundColor = state.secondary.nsColor
+        textRect = r
+        tv.minSize = NSSize(width: CGFloat(r.w), height: CGFloat(r.h))
+        tv.maxSize = NSSize(width: CGFloat(r.w), height: 100_000)
+        tv.frame = NSRect(x: margin + CGFloat(r.x), y: margin + CGFloat(r.y), width: CGFloat(r.w), height: CGFloat(r.h))
+        tv.sizeToFit()  // grows back to fit the text when the box is too short
         needsDisplay = true
     }
 
-    /// Renders the text box into the picture (without antialiasing, like Paint).
+    private func resizeTextBox(_ h: Int, to p: IPoint) {
+        let dx = p.x - startPt.x, dy = p.y - startPt.y
+        let minW = 10, minH = Int(NSLayoutManager().defaultLineHeight(for: state.textFont()).rounded(.up))
+        var x0 = moveOrigin.x, y0 = moveOrigin.y, x1 = moveOrigin.maxX, y1 = moveOrigin.maxY
+        let left = [0, 6, 7].contains(h), top = [0, 1, 2].contains(h)
+        if left { x0 += dx }
+        if [2, 3, 4].contains(h) { x1 += dx }
+        if top { y0 += dy }
+        if [4, 5, 6].contains(h) { y1 += dy }
+        if x1 - x0 < minW { if left { x0 = x1 - minW } else { x1 = x0 + minW } }
+        if y1 - y0 < minH { if top { y0 = y1 - minH } else { y1 = y0 + minH } }
+        setTextBox(IRect(x: x0, y: y0, w: x1 - x0, h: y1 - y0))
+    }
+
+    private func moveTextBox(to p: IPoint) {
+        var r = textRect
+        r.x = moveOrigin.x + p.x - startPt.x
+        r.y = moveOrigin.y + p.y - startPt.y
+        setTextBox(IRect(x: r.x, y: r.y, w: moveOrigin.w, h: moveOrigin.h))
+    }
+
+    private func textAttributes(color: NSColor) -> [NSAttributedString.Key: Any] {
+        var attrs: [NSAttributedString.Key: Any] = [.font: state.textFont(), .foregroundColor: color]
+        if state.underline { attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        return attrs
+    }
+
+    /// The text view only handles typing, the caret and selection; its letters are
+    /// invisible and the canvas draws `renderedText()` instead, so the preview is
+    /// pixel-for-pixel what gets placed.
+    private func applyTextStyle() {
+        guard let tv = textView else { return }
+        let attrs = textAttributes(color: .clear)
+        tv.typingAttributes = attrs
+        if let ts = tv.textStorage { ts.setAttributes(attrs, range: NSRange(location: 0, length: ts.length)) }
+        tv.insertionPointColor = state.primary.nsColor
+        tv.drawsBackground = false
+        needsDisplay = true
+    }
+
+    private var textBoxRect: IRect {
+        IRect(x: textRect.x, y: textRect.y, w: textRect.w, h: max(textRect.h, Int((textView?.frame.height ?? 0).rounded(.up))))
+    }
+
+    /// The text box as it will be placed: no antialiasing (like Paint), on the
+    /// background color when Draw Opaque is on, transparent otherwise.
+    private func renderedText() -> Bitmap? {
+        guard let tv = textView else { return nil }
+        let r = textBoxRect
+        let out = Bitmap(width: r.w, height: r.h, fill: state.transparentSelection ? 0 : state.secondary)
+        guard !tv.string.isEmpty else { return out }
+        // Same layout settings as the text view, with the real color.
+        let storage = NSTextStorage(string: tv.string, attributes: textAttributes(color: state.primary.nsColor))
+        let lm = NSLayoutManager()
+        storage.addLayoutManager(lm)
+        let tc = NSTextContainer(size: NSSize(width: CGFloat(r.w), height: .greatestFiniteMagnitude))
+        tc.lineFragmentPadding = 0
+        lm.addTextContainer(tc)
+        let ctx = out.context
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+        ctx.setShouldAntialias(false)
+        ctx.setAllowsFontSmoothing(false)
+        ctx.setShouldSmoothFonts(false)
+        lm.drawGlyphs(forGlyphRange: lm.glyphRange(for: tc), at: .zero)
+        NSGraphicsContext.restoreGraphicsState()
+        out.touch()
+        return out
+    }
+
+    /// Places the text box into the picture.
     func commitText() {
         guard let tv = textView else { return }
+        let rendered = tv.string.isEmpty ? nil : renderedText()
+        let r = textBoxRect
         textView = nil
         window?.makeFirstResponder(self)
         NotificationCenter.default.removeObserver(self, name: NSView.frameDidChangeNotification, object: tv)
-        let r = IRect(x: textRect.x, y: textRect.y, w: textRect.w, h: Int(tv.frame.height.rounded(.up)))
-        if !tv.string.isEmpty, let lm = tv.layoutManager, let tc = tv.textContainer {
+        NotificationCenter.default.removeObserver(self, name: NSText.didChangeNotification, object: tv)
+        if let rendered {
             let s = bitmap.snapshot()
-            if !state.transparentSelection { bitmap.fill(r, state.secondary) }
-            let ctx = bitmap.context
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
-            ctx.saveGState()
-            ctx.clip(to: r.cg)
-            ctx.setShouldAntialias(false)
-            ctx.setAllowsFontSmoothing(false)
-            ctx.setShouldSmoothFonts(false)
-            lm.drawGlyphs(forGlyphRange: lm.glyphRange(for: tc), at: CGPoint(x: r.x, y: r.y))
-            ctx.restoreGState()
-            NSGraphicsContext.restoreGraphicsState()
-            bitmap.touch()
+            bitmap.draw(rendered.image, in: r.cg)
             registerUndo(s, Tool.text.title)
         }
         tv.removeFromSuperview()
@@ -884,6 +995,10 @@ final class CanvasView: NSView {
             ctx.clip(to: ir)
             drawImage(ctx, sel.overlay(transparentKey: transparentKey), viewRect(sel.rect))
         }
+        if let text = renderedText() {
+            ctx.clip(to: ir)
+            drawImage(ctx, text.image, viewRect(textBoxRect))
+        }
         ctx.restoreGState()
 
         if state.showGrid && zoom >= 4 { drawGrid(ir.intersection(dirtyRect)) }
@@ -902,7 +1017,11 @@ final class CanvasView: NSView {
             dashed(r)
             if isSelectTool { handles(handleCenters(r)) }
         }
-        if let tv = textView { dashed(tv.frame) }
+        if textView != nil {
+            let r = viewRect(textBoxRect)
+            dashed(r)
+            handles(handleCenters(r))
+        }
         if let d = canvasDrag { dashed(CGRect(x: margin, y: margin, width: CGFloat(d.w), height: CGFloat(d.h))) }
         Classic.navy.setFill()
         for (_, r) in canvasHandleRects() { r.fill() }
@@ -977,7 +1096,11 @@ final class CanvasView: NSView {
     }
 
     private func cursor(at vp: CGPoint) -> NSCursor {
-        if let tv = textView, tv.frame.contains(vp) { return .iBeam }
+        if textView != nil {
+            if let h = textHandle(at: vp) { return resizeCursor(h) }
+            if onTextBorder(vp) { return PixelArt.moveCursor }
+            if viewRect(textBoxRect).contains(vp) { return .iBeam }
+        }
         if isSelectTool, let h = selectionHandle(at: vp) { return resizeCursor(h) }
         if let h = canvasHandle(at: vp) { return resizeCursor(h) }
         if isSelectTool, let sel = selection, sel.rect.contains(pixel(vp)) { return PixelArt.moveCursor }

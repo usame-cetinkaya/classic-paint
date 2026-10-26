@@ -180,7 +180,47 @@ enum SelfTest {
         }
         act { describeText("after typing 28 (no Return)") }
         act { bar.italic.performClick(nil) }
+        // Text box handles: real clicks must reach the canvas, not the text view
+        func boxFrame() -> String {
+            let f = canvas.subviews.compactMap { $0 as? PaintTextView }.first?.frame ?? .zero
+            return "x=\(Int(f.minX - canvas.margin)) y=\(Int(f.minY - canvas.margin)) w=\(Int(f.width)) h=\(Int(f.height))"
+        }
+        act {
+            let hit = canvas.hitTest(canvas.superview!.convert(pt(421, 320), from: nil))
+            let inside = canvas.hitTest(canvas.superview!.convert(pt(300, 320), from: nil))
+            print("SELFTEST: textbox \(boxFrame()); right handle hits \(type(of: hit!)), inside hits \(type(of: inside!))")
+        }
+        drag([(421, 320), (450, 322), (481, 325)])
+        act { print("SELFTEST: textbox after dragging right handle +60: \(boxFrame())") }
+        drag([(481, 320), (421, 320)])
+        drag([(300, 300), (330, 290), (350, 280)])   // top border: move
+        act { print("SELFTEST: textbox after moving by its border: \(boxFrame())") }
+        drag([(350, 280), (300, 300)])
+        act { print("SELFTEST: textbox restored: \(boxFrame())") }
+        // The preview must be pixel-identical to the placed text.
+        let textArea = NSRect(x: canvas.margin + 200, y: canvas.margin + 300, width: 221, height: 41)
+        func capture(_ name: String) -> [UInt8] {
+            let rep = canvas.bitmapImageRepForCachingDisplay(in: textArea)!
+            canvas.cacheDisplay(in: textArea, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out).appendingPathComponent(name))
+            return Array(UnsafeBufferPointer(start: rep.bitmapData!, count: rep.bytesPerRow * rep.pixelsHigh))
+        }
+        var preview: [UInt8] = []
+        act { preview = capture("text-preview.png") }
         act { state.selectTool(.select) }   // commits the text
+        act {
+            let placed = capture("text-placed.png")
+            let diff = zip(preview, placed).filter { $0 != $1 }.count
+            var rows = Set<Int>(), cols = Set<Int>()
+            let bpr = preview.count / 41
+            for (i, (a, b)) in zip(preview, placed).enumerated() where a != b { rows.insert(i / bpr); cols.insert((i % bpr) / 4) }
+            var inner = 0
+            for (i, (a, b)) in zip(preview, placed).enumerated() where a != b {
+                let row = i / bpr, col = (i % bpr) / 4
+                if row > 2 && row < 38 && col > 2 && col < 218 { inner += 1 }
+            }
+            print("SELFTEST: text preview vs placed: \(diff) bytes differ, \(inner) inside the box border (rows \(rows.count), cols \(cols.count))")
+        }
         // Select a block and move it (Ctrl+drag would copy)
         drag([(10, 10), (150, 70)])
         drag([(50, 30), (80, 380), (90, 420)])
