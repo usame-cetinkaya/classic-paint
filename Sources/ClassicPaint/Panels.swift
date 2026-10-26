@@ -196,11 +196,11 @@ enum HelpWindow {
       Tool Box ⌘T      Color Box ⌘L      View Bitmap ⌘F
       Normal Size ⌃Page Up (or ⌘0)     Large Size ⌃Page Down
       Zoom In ⌘=       Zoom Out ⌘-       Show Grid ⌘G (at 400% and above)
-      Actual Size ⌥⌘0: 1 cm in Attributes measures 1 cm on screen
-        (View > Zoom > Calibrate Screen… once, with a ruler)
       Pinch on the trackpad to zoom freely.
 
     IMAGE
+      Attributes: set Resolution to your screen's pixels per inch once, and
+      sizes in cm/inches match a ruler at Normal Size (100%).
       Flip/Rotate ⌘R   Stretch/Skew ⌃W   Invert Colors ⌘I
       Attributes ⌘E    Clear Image ⇧⌘N   Crop to Selection ⇧⌘X
 

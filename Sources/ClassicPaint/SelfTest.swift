@@ -16,52 +16,37 @@ enum SelfTest {
         guard let wc = NSApp.windows.compactMap({ $0.windowController as? PaintWindowController }).first,
               let window = wc.window else { print("SELFTEST: no window"); exit(2) }
         window.makeKeyAndOrderFront(nil)
-        if ProcessInfo.processInfo.environment["CLASSIC_PAINT_TEST_ACTUAL"] != nil, let screen = window.screen ?? NSScreen.main {
-            print("ACTUAL reported=\(String(describing: ScreenCalibration.reportedPointsPerInch(for: screen)))")
-            // The user's measurement: a 10 cm box measured 7.5 cm at 100%.
-            ScreenCalibration.set(96 * 10 / 7.5, for: screen)
-            wc.canvas.zoomActualSize(nil)
-            let z = wc.canvas.enclosingScrollView!.magnification
-            let cmOnScreen = 378 * z / ScreenCalibration.pointsPerInch(for: screen)! * 2.54
-            let cal = CalibrationView(pointsPerInch: 128)
-            let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
-            host.appearance = NSAppearance(named: .aqua)
-            let box = NSView(frame: NSRect(origin: .zero, size: cal.fittingSize).insetBy(dx: -16, dy: -16))
-            box.wantsLayer = true
-            box.layer?.backgroundColor = NSColor(white: 0.93, alpha: 1).cgColor
-            cal.frame = NSRect(origin: NSPoint(x: 16, y: 16), size: cal.fittingSize)
-            box.addSubview(cal)
-            host.contentView = box
-            box.layoutSubtreeIfNeeded()
-            let rep = box.bitmapImageRepForCachingDisplay(in: box.bounds)!
-            box.cacheDisplay(in: box.bounds, to: rep)
-            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLASSIC_PAINT_TEST_ACTUAL"]!))
-            print("ACTUAL zoom=\(z) → a 378 px (10 cm) box spans \(String(format: "%.2f", cmOnScreen)) cm on screen; status=\(wc.canvas.statusBar?.zoom ?? "")")
-            exit(0)
-        }
         if let shot = ProcessInfo.processInfo.environment["CLASSIC_PAINT_TEST_ATTRIBUTES"] {
+            let savedDPI = UserDefaults.standard.object(forKey: "Resolution"), savedUnit = UserDefaults.standard.object(forKey: "AttributesUnit")
+            UserDefaults.standard.removeObject(forKey: "Resolution")
             UserDefaults.standard.removeObject(forKey: "AttributesUnit")
-            let form = AttributesForm(width: 800, height: 600)
-            let radios = form.view.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSButton }
-            func click(_ title: String) { radios.first { $0.title == title }!.performClick(nil) }
-            func fields() -> String { "\(form.widthField.stringValue) x \(form.heightField.stringValue)" }
-            print("ATTR pixels: \(fields())")
-            click("Inches"); print("ATTR inches: \(fields())")
-            click("Cm"); print("ATTR cm: \(fields())")
-            click("Pixels"); print("ATTR back to pixels: \(fields()) result=\(form.result()!)")
-            click("Inches"); form.widthField.stringValue = "2"; form.heightField.stringValue = "1,5"
-            print("ATTR 2in x 1,5in -> \(form.result()!)")
-            click("Cm"); print("ATTR shown in cm: \(fields()) result=\(form.result()!)")
-            form.widthField.stringValue = "abc"; print("ATTR invalid -> \(String(describing: form.result()))")
+            var form = AttributesForm(width: 800, height: 600)
+            func radios() -> [NSButton] { form.view.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSButton } }
+            func click(_ title: String) { radios().first { $0.title == title }!.performClick(nil) }
+            func fields() -> String { "\(form.widthField.stringValue) x \(form.heightField.stringValue) @ \(form.resolutionField.stringValue)" }
+            print("ATTR default: \(fields())")
+            click("Cm"); print("ATTR cm @96: \(fields())")
+            // The user's screen: a 10 cm box at 96 measured 7.5 cm → 128 ppi.
+            form.resolutionField.stringValue = "128"
+            form.widthField.stringValue = "10"; form.heightField.stringValue = "10"
+            print("ATTR 10x10 cm @128 -> \(form.result()!) saved dpi=\(Bitmap.dpi)")
+            form = AttributesForm(width: 504, height: 504)
+            print("ATTR reopened: \(fields())")
+            click("Pixels"); form.resolutionField.stringValue = "96"
+            print("ATTR pixels kept when resolution changes -> \(form.result()!)")
+            Bitmap.dpi = 128
+            form = AttributesForm(width: 800, height: 600)
+            form.resolutionField.stringValue = "abc"
+            print("ATTR invalid resolution -> \(String(describing: form.result()))")
             let img = Bitmap(width: 555, height: 266, fill: .white)
             for uti in ["public.png", "com.microsoft.bmp", "public.jpeg", "public.tiff"] {
                 let props = CGImageSourceCopyPropertiesAtIndex(CGImageSourceCreateWithData(img.encoded(as: uti)! as CFData, nil)!, 0, nil) as! [CFString: Any]
                 let dpi = props[kCGImagePropertyDPIWidth] as? Double ?? 0
-                print("ATTR \(uti) dpi=\(dpi) → \(String(format: "%.2f", 555 / dpi * 2.54)) cm wide")
+                print("ATTR \(uti) dpi=\(dpi)")
             }
-            print("ATTR remembered unit=\(UserDefaults.standard.integer(forKey: "AttributesUnit"))")
             let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
-            form.widthField.stringValue = "21.17"
+            form.resolutionField.stringValue = "128"
+            click("Cm")
             let box = NSView(frame: NSRect(origin: .zero, size: form.view.fittingSize).insetBy(dx: -16, dy: -16))
             form.view.frame = NSRect(origin: NSPoint(x: 16, y: 16), size: form.view.fittingSize)
             box.addSubview(form.view)
@@ -73,6 +58,9 @@ enum SelfTest {
             let rep = box.bitmapImageRepForCachingDisplay(in: box.bounds)!
             box.cacheDisplay(in: box.bounds, to: rep)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: shot))
+            // Leave the user's own settings as they were.
+            UserDefaults.standard.set(savedDPI, forKey: "Resolution")
+            UserDefaults.standard.set(savedUnit, forKey: "AttributesUnit")
             exit(0)
         }
         if ProcessInfo.processInfo.environment["CLASSIC_PAINT_DUMP_MENU"] != nil {

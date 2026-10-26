@@ -113,50 +113,58 @@ enum Dialogs {
     }
 }
 
-/// Image > Attributes: width and height in inches, centimeters or pixels,
-/// converted at 96 dots per inch like Windows Paint.
+/// Image > Attributes: width and height in inches, centimeters or pixels, and the
+/// resolution (pixels per inch) used to convert them. The resolution is remembered;
+/// set to the screen's pixels per inch, centimeters match a ruler at 100% zoom.
 final class AttributesForm: NSObject {
     enum Unit: Int, CaseIterable {
         case inches, centimeters, pixels
 
         var title: String { ["Inches", "Cm", "Pixels"][rawValue] }
-        var pixelsPerUnit: Double { [AttributesForm.dpi, AttributesForm.dpi / 2.54, 1][rawValue] }
+        func pixelsPerUnit(_ ppi: Double) -> Double { [ppi, ppi / 2.54, 1][rawValue] }
     }
 
-    static let dpi = Bitmap.dpi
     private static let unitKey = "AttributesUnit"
+    static let resolutionRange: ClosedRange<Double> = 10...1000
 
     let widthField = NSTextField()
     let heightField = NSTextField()
+    let resolutionField = NSTextField()
     private(set) var view = NSView()
     private var unit: Unit
-    private var buttons: [NSButton] = []
     /// Exact sizes, so switching units back and forth never changes them by rounding.
     private var pixels: (w: Int, h: Int)
-    private var shown: (w: String, h: String) = ("", "")
+    /// What the fields showed, at which resolution; untouched fields keep their exact pixels.
+    private var shown: (w: String, h: String, ppi: Double) = ("", "", 0)
 
     init(width: Int, height: Int) {
         pixels = (width, height)
         unit = (UserDefaults.standard.object(forKey: AttributesForm.unitKey) as? Int).flatMap(Unit.init) ?? .pixels
         super.init()
-        for f in [widthField, heightField] {
+        for f in [widthField, heightField, resolutionField] {
             f.alignment = .right
             f.widthAnchor.constraint(equalToConstant: 80).isActive = true
         }
-        buttons = Unit.allCases.map { u in
+        resolutionField.stringValue = AttributesForm.format(Bitmap.dpi)
+        let buttons = Unit.allCases.map { u in
             let b = NSButton(radioButtonWithTitle: u.title, target: self, action: #selector(unitChanged(_:)))
             b.tag = u.rawValue
             b.state = u == unit ? .on : .off
             return b
         }
-        let size = NSGridView(views: [[NSTextField(labelWithString: "Width:"), widthField],
-                                      [NSTextField(labelWithString: "Height:"), heightField]])
-        size.rowSpacing = 8
+        let grid = NSGridView(views: [
+            [NSTextField(labelWithString: "Width:"), widthField, NSGridCell.emptyContentView],
+            [NSTextField(labelWithString: "Height:"), heightField, NSGridCell.emptyContentView],
+            [NSTextField(labelWithString: "Resolution:"), resolutionField, NSTextField(labelWithString: "pixels per inch")],
+        ])
+        grid.rowSpacing = 8
         let units = NSStackView(views: [NSTextField(labelWithString: "Units:")] + buttons)
-        let note = NSTextField(labelWithString: "Resolution: \(Int(AttributesForm.dpi)) × \(Int(AttributesForm.dpi)) dots per inch")
+        let note = NSTextField(wrappingLabelWithString:
+            "Enter your screen's pixels per inch to make centimeters and inches match a ruler at Normal Size (100%). Windows uses 96.")
         note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         note.textColor = .secondaryLabelColor
-        let stack = NSStackView(views: [size, units, note])
+        note.preferredMaxLayoutWidth = 300
+        let stack = NSStackView(views: [grid, units, note])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 12
@@ -164,22 +172,37 @@ final class AttributesForm: NSObject {
         show()
     }
 
+    private static func format(_ v: Double) -> String {
+        v == v.rounded() ? String(Int(v)) : String(format: "%.2f", v)
+    }
+
+    private static func number(_ field: NSTextField) -> Double? {
+        Double(field.stringValue.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "."))
+    }
+
+    /// The resolution typed in the dialog (falls back to the saved one while it is invalid).
+    private var ppi: Double {
+        guard let v = AttributesForm.number(resolutionField), AttributesForm.resolutionRange.contains(v) else { return Bitmap.dpi }
+        return v
+    }
+
     private func format(_ px: Int) -> String {
-        unit == .pixels ? String(px) : String(format: "%.2f", Double(px) / unit.pixelsPerUnit)
+        unit == .pixels ? String(px) : String(format: "%.2f", Double(px) / unit.pixelsPerUnit(ppi))
     }
 
     private func show() {
-        shown = (format(pixels.w), format(pixels.h))
+        shown = (format(pixels.w), format(pixels.h), ppi)
         widthField.stringValue = shown.w
         heightField.stringValue = shown.h
     }
 
-    /// The field in pixels; nil when it isn't a valid number.
+    /// The field in pixels; nil when it isn't a valid number. After a resolution change,
+    /// centimeters/inches as typed are kept and the pixels follow.
     private func parse(_ field: NSTextField, displayed: String, exact: Int) -> Int? {
         let text = field.stringValue.trimmingCharacters(in: .whitespaces)
-        if text == displayed { return exact }
-        guard let v = Double(text.replacingOccurrences(of: ",", with: ".")), v > 0 else { return nil }
-        return max(1, Int((v * unit.pixelsPerUnit).rounded()))
+        if text == displayed && (unit == .pixels || ppi == shown.ppi) { return exact }
+        guard let v = AttributesForm.number(field), v > 0 else { return nil }
+        return max(1, Int((v * unit.pixelsPerUnit(ppi)).rounded()))
     }
 
     @objc private func unitChanged(_ sender: NSButton) {
@@ -191,10 +214,13 @@ final class AttributesForm: NSObject {
         show()
     }
 
+    /// The new size in pixels, after saving the resolution; nil if anything is invalid.
     func result() -> (Int, Int)? {
-        guard let w = parse(widthField, displayed: shown.w, exact: pixels.w),
+        guard let r = AttributesForm.number(resolutionField), AttributesForm.resolutionRange.contains(r),
+              let w = parse(widthField, displayed: shown.w, exact: pixels.w),
               let h = parse(heightField, displayed: shown.h, exact: pixels.h),
               (1...20000).contains(w), (1...20000).contains(h) else { return nil }
+        Bitmap.dpi = r
         return (w, h)
     }
 }

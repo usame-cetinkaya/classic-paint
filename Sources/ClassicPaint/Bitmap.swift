@@ -115,8 +115,16 @@ func bresenham(_ a: IPoint, _ b: IPoint, _ plot: (Int, Int) -> Void) {
 /// A pixel buffer with a CoreGraphics context drawing into it. The context uses
 /// top-left origin coordinates and never antialiases, like the original Paint.
 final class Bitmap {
-    /// Paint's resolution: Attributes converts inches/cm with it, and files and prints carry it.
-    static let dpi = 96.0
+    /// Pixels per inch, set in Image > Attributes (default 96 like Windows). Set it to the
+    /// screen's real pixels per inch and 100% zoom shows true size. Attributes converts
+    /// inches/cm with it, and saved files and prints carry it.
+    static var dpi: Double {
+        get {
+            let v = UserDefaults.standard.double(forKey: "Resolution")
+            return v > 0 ? v : 96
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "Resolution") }
+    }
     static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     static let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
 
