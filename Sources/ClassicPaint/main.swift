@@ -13,6 +13,8 @@ if args.count == 3, args[1] == "--render-icon" {
 }
 
 let app = NSApplication.shared
+// The first document controller created becomes the shared one.
+_ = PaintDocumentController()
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)

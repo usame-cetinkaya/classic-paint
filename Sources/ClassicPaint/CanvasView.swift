@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// (plus a small margin); zooming is done by the enclosing scroll view's
 /// magnification, so everything here is drawn and hit-tested at 1×.
 final class CanvasView: NSView {
-    unowned let document: PaintDocument
+    private(set) unowned var document: PaintDocument
     weak var statusBar: StatusBarView?
     private let state = PaintState.shared
     var bitmap: Bitmap { document.bitmap }
@@ -121,6 +121,14 @@ final class CanvasView: NSView {
         window?.makeFirstResponder(self)
 
         let vp = viewPoint(e), p = pixel(vp)
+        let selectionHandleHit = isSelectTool ? selectionHandle(at: vp) : nil
+        let canvasHandleHit = selectionHandleHit == nil ? canvasHandle(at: vp) : nil
+        if canvasHandleHit != nil {
+            // Before the drag starts: finishPending() cancels an active drag.
+            finishPending()
+            commitSelection()
+        }
+
         dragging = true
         activeRight = right
         button = b
@@ -129,14 +137,12 @@ final class CanvasView: NSView {
         rawPt = p
         shift = e.modifierFlags.contains(.shift)
 
-        if isSelectTool, let sel = selection, let h = selectionHandle(at: vp) {
+        if let h = selectionHandleHit, let sel = selection {
             mode = .resizeSelection(h)
             moveOrigin = sel.rect
             return
         }
-        if let h = canvasHandle(at: vp) {
-            finishPending()
-            commitSelection()
+        if let h = canvasHandleHit {
             mode = .resizeCanvas(h)
             canvasDrag = (bitmap.width, bitmap.height)
             return
@@ -826,13 +832,28 @@ final class CanvasView: NSView {
         mode = .idle
         base = nil
         curveActive = false
+        curveStage = 0
         poly = []
+        polyTail = nil
+        dragRect = nil
+        canvasDrag = nil
         selection = nil
         if let tv = textView {
             textView = nil
             tv.removeFromSuperview()
+            FontBar.shared.orderOut(nil)
         }
         bitmapDidChange()
+    }
+
+    /// File > Open in this window: show another document's picture.
+    func attach(_ doc: PaintDocument) {
+        document = doc
+        doc.canvas = self
+        reset()
+        enclosingScrollView?.magnification = 1
+        updateFrame()
+        scroll(.zero)
     }
 
     /// The picture including a floating selection.

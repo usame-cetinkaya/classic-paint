@@ -66,6 +66,9 @@ enum SelfTest {
         }
         func act(_ f: @escaping () -> Void) { steps.append(f) }
 
+        // Drag the bottom-right canvas handle out to 900×700
+        drag([(800, 600), (850, 650), (900, 700)])
+        act { print("SELFTEST: canvas after handle drag \(canvas.bitmap.width)x\(canvas.bitmap.height)") }
         // Pencil scribble
         act { state.selectTool(.pencil) }
         drag([(20, 20), (60, 40), (100, 20), (140, 60)])
@@ -151,8 +154,15 @@ enum SelfTest {
                 try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("zoom.png"))
             }
             let um = canvas.document.undoManager!
+            let windowsBefore = NSApp.windows.filter { $0.windowController is PaintWindowController }.count
+            let file = dir.appendingPathComponent("image.png")
             print("SELFTEST: undo=\(um.undoActionName) canUndo=\(um.canUndo) edited=\(canvas.document.isDocumentEdited) title=\(window.title)")
-            exit(0)
+            canvas.document.updateChangeCount(.changeCleared)
+            NSDocumentController.shared.openDocument(withContentsOf: file, display: true) { doc, _, err in
+                let windows = NSApp.windows.filter { $0.windowController is PaintWindowController }
+                print("SELFTEST: open err=\(String(describing: err)) windows \(windowsBefore)->\(windows.count) sameDoc=\(canvas.document === doc) title=\(window.title) size=\(canvas.bitmap.width)x\(canvas.bitmap.height) docs=\(NSDocumentController.shared.documents.count)")
+                exit(0)
+            }
         }
         runNext()
     }
